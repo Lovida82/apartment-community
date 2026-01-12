@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>공지사항 등록</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl p-8 max-w-2xl w-full">
+        <h1 class="text-2xl font-bold text-gray-800 mb-4">첫 공지사항 등록</h1>
+        <div id="status" class="mb-4 p-4 rounded-lg bg-yellow-100 text-yellow-700">
+            준비 중...
+        </div>
+        <button id="addBtn" onclick="addNotice()" disabled
+            class="w-full bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 disabled:bg-gray-400">
+            공지사항 등록하기
+        </button>
+        <div id="result" class="mt-4 hidden"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDz84lvk87Uu6uZJM0jBXA47-HHCtQ0dO8",
+            authDomain: "woori-apartment.firebaseapp.com",
+            projectId: "woori-apartment",
+            storageBucket: "woori-apartment.firebasestorage.app",
+            messagingSenderId: "783406954743",
+            appId: "1:783406954743:web:42c296d03ef9c1c1883bf2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        const noticeContent = `안녕하세요, 평택고덕행복주택 입주민 여러분!
+
+그동안 같은 단지에 살면서도 취미나 관심사를 공유할 공간이 없어 아쉬웠던 분들이 많으셨을 것 같습니다. 이웃과 함께하는 즐거운 커뮤니티 생활을 위해 이 앱을 만들게 되었습니다.
+
+자유롭게 활용하셔서 우리 아파트의 커뮤니티 활동이 더욱 활발해지길 바랍니다!
+
+■ 주요 기능 안내
+
+【모임방】
+관심사별로 모임방을 만들거나 참여할 수 있습니다. 운동, 독서, 육아, 반려동물 등 다양한 주제로 이웃들과 소통해보세요.
+
+【이벤트】
+정기 모임, 원데이 클래스, 공동구매 등 이벤트를 직접 만들고 참여할 수 있습니다. 캘린더에서 일정도 한눈에 확인하세요.
+
+【1:1 매칭】
+관심사가 비슷한 이웃을 찾아 1:1로 연결해드립니다. 새로운 이웃 친구를 만들어보세요.
+
+【게시판】
+- 모임후기: 함께한 모임의 즐거웠던 순간을 공유해주세요.
+- 맛집추천: 우리 동네 숨은 맛집, 카페, 병원 등을 추천해주세요.
+- 나눔/중고거래: 필요없는 물건은 나누고, 필요한 물건은 합리적으로 거래하세요.
+
+【쪽지】
+이웃에게 개인 메시지를 보낼 수 있습니다.
+
+■ 이용 안내
+
+- 프로필에서 관심사를 설정하면 맞춤 추천을 받을 수 있습니다.
+- 부적절한 게시물이나 사용자는 신고 기능을 이용해주세요.
+- 문의사항은 마이페이지 > 요청/문의를 이용해주세요.
+
+함께 만들어가는 따뜻한 이웃 커뮤니티가 되었으면 좋겠습니다.
+감사합니다.`;
+
+        window.addNotice = async function() {
+            const statusEl = document.getElementById('status');
+            const resultEl = document.getElementById('result');
+            const btn = document.getElementById('addBtn');
+
+            btn.disabled = true;
+            statusEl.className = 'mb-4 p-4 rounded-lg bg-blue-100 text-blue-700';
+            statusEl.textContent = '공지사항 등록 중...';
+
+            try {
+                const docRef = await addDoc(collection(db, 'notices'), {
+                    title: "평택고덕행복주택 커뮤니티 앱을 소개합니다!",
+                    content: noticeContent,
+                    type: "normal",
+                    authorId: "admin",
+                    authorNickname: "관리자",
+                    createdAt: serverTimestamp()
+                });
+
+                statusEl.className = 'mb-4 p-4 rounded-lg bg-green-100 text-green-700';
+                statusEl.textContent = '공지사항이 성공적으로 등록되었습니다!';
+
+                resultEl.className = 'mt-4 p-4 bg-gray-50 rounded-lg';
+                resultEl.innerHTML = `<div class="text-sm text-gray-600">Document ID: <code class="bg-gray-200 px-2 py-1 rounded">${docRef.id}</code></div>
+                    <div class="mt-2 text-sm text-gray-500">관리자 페이지 또는 메인 앱의 공지사항에서 확인하세요.</div>`;
+            } catch (error) {
+                statusEl.className = 'mb-4 p-4 rounded-lg bg-red-100 text-red-700';
+                statusEl.textContent = '오류 발생: ' + error.message;
+                btn.disabled = false;
+            }
+        };
+
+        // Firebase 초기화 완료
+        document.getElementById('status').className = 'mb-4 p-4 rounded-lg bg-green-100 text-green-700';
+        document.getElementById('status').textContent = 'Firebase 연결 완료. 버튼을 클릭하여 공지사항을 등록하세요.';
+        document.getElementById('addBtn').disabled = false;
+    </script>
+</body>
+</html>

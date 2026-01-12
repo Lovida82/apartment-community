@@ -1,0 +1,1268 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>우리 아파트 - 관리자 페이지</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%234F46E5'/><text x='50%25' y='50%25' dominant-baseline='central' text-anchor='middle' font-size='50'>🏠</text></svg>">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFirestore, collection, getDocs, query, where, updateDoc, doc, deleteDoc, orderBy, getDoc, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDz84lvk87Uu6uZJM0jBXA47-HHCtQ0dO8",
+            authDomain: "woori-apartment.firebaseapp.com",
+            projectId: "woori-apartment",
+            storageBucket: "woori-apartment.firebasestorage.app",
+            messagingSenderId: "783406954743",
+            appId: "1:783406954743:web:42c296d03ef9c1c1883bf2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        window.firebaseApp = { app, auth, db };
+        window.firebaseModules = {
+            auth: { signInWithEmailAndPassword, signOut, onAuthStateChanged },
+            firestore: { collection, getDocs, query, where, updateDoc, doc, deleteDoc, orderBy, getDoc, addDoc, serverTimestamp }
+        };
+
+        console.log('Firebase 관리자 페이지 초기화 완료');
+        window.firebaseReady = true;
+        window.dispatchEvent(new Event('firebaseReady'));
+    </script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; }
+        .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; }
+        .loading-dark { border: 3px solid rgba(0,0,0,.1); border-top-color: #4f46e5; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .menu-item { transition: all 0.2s; }
+        .menu-item:hover { transform: translateY(-2px); }
+        .menu-item.active { ring: 2px; ring-color: #4f46e5; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0); }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <div class="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div class="text-center">
+                <div class="loading loading-dark"></div>
+                <p class="mt-4 text-gray-600">로딩 중...</p>
+            </div>
+        </div>
+    </div>
+
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Firebase 헬퍼 함수
+        const getFirebase = () => {
+            const { firestore, auth } = window.firebaseModules;
+            const { db, auth: firebaseAuth } = window.firebaseApp;
+            return { firestore, auth, db, firebaseAuth };
+        };
+
+        // Toast 컴포넌트
+        const Toast = ({ message, type = 'info', onClose }) => {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 3000);
+                return () => clearTimeout(timer);
+            }, [onClose]);
+
+            const bgColor = type === 'error' ? 'bg-red-500' : type === 'success' ? 'bg-green-500' : 'bg-blue-500';
+            return (
+                <div className={`fixed bottom-20 left-1/2 transform -translate-x-1/2 ${bgColor} text-white px-4 py-3 rounded-lg shadow-lg z-50 max-w-sm`}>
+                    {message}
+                </div>
+            );
+        };
+
+        // ConfirmModal 컴포넌트
+        const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, confirmText = '확인', cancelText = '취소', danger = false }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl max-w-sm w-full p-6">
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">{title}</h3>
+                        <p className="text-gray-600 mb-6">{message}</p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={onCancel}
+                                className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
+                            >
+                                {cancelText}
+                            </button>
+                            <button
+                                onClick={onConfirm}
+                                className={`flex-1 px-4 py-3 rounded-xl font-medium ${danger ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+                            >
+                                {confirmText}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 아이콘들
+        const Shield = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+        );
+
+        const Users = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+        );
+
+        const MessageCircle = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+            </svg>
+        );
+
+        const Calendar = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+        );
+
+        const BarChart = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/>
+                <line x1="6" y1="20" x2="6" y2="16"/>
+            </svg>
+        );
+
+        const Trash2 = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+        );
+
+        const LogOut = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+        );
+
+        const MapPin = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+            </svg>
+        );
+
+        const Gift = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <polyline points="20 12 20 22 4 22 4 12"/>
+                <rect x="2" y="7" width="20" height="5"/>
+                <line x1="12" y1="22" x2="12" y2="7"/>
+                <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+                <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+            </svg>
+        );
+
+        const FileText = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+        );
+
+        const Bell = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+        );
+
+        const AlertCircle = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+        );
+
+        const Flag = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                <line x1="4" y1="22" x2="4" y2="15"/>
+            </svg>
+        );
+
+        const ChevronDown = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <polyline points="6 9 12 15 18 9"/>
+            </svg>
+        );
+
+        const Menu = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+                <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+        );
+
+        // 관리자 유틸리티
+        const AdminUtils = {
+            ADMIN_EMAILS: ['admin@admin.com', 'admin@woori-apt.com', 'manager@woori-apt.com'],
+
+            isAdmin(email) {
+                return this.ADMIN_EMAILS.includes(email);
+            },
+
+            async getAllUsers() {
+                const { firestore, db } = getFirebase();
+                const querySnapshot = await firestore.getDocs(firestore.collection(db, 'users'));
+                return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            },
+
+            async deleteUser(userId) {
+                const { firestore, db } = getFirebase();
+                await firestore.deleteDoc(firestore.doc(db, 'users', userId));
+            },
+
+            async getAllChatRooms() {
+                const { firestore, db } = getFirebase();
+                const q = firestore.query(firestore.collection(db, 'chatRooms'), firestore.orderBy('createdAt', 'desc'));
+                const querySnapshot = await firestore.getDocs(q);
+                return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            },
+
+            async deleteChatRoom(roomId) {
+                const { firestore, db } = getFirebase();
+                await firestore.deleteDoc(firestore.doc(db, 'chatRooms', roomId));
+            },
+
+            async getAllEvents() {
+                const { firestore, db } = getFirebase();
+                const q = firestore.query(firestore.collection(db, 'events'), firestore.orderBy('createdAt', 'desc'));
+                const querySnapshot = await firestore.getDocs(q);
+                return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            },
+
+            async deleteEvent(eventId) {
+                const { firestore, db } = getFirebase();
+                await firestore.deleteDoc(firestore.doc(db, 'events', eventId));
+            },
+
+            async getAllNotices() {
+                const { firestore, db } = getFirebase();
+                const q = firestore.query(firestore.collection(db, 'notices'), firestore.orderBy('createdAt', 'desc'));
+                const querySnapshot = await firestore.getDocs(q);
+                return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            },
+
+            async deleteNotice(noticeId) {
+                const { firestore, db } = getFirebase();
+                await firestore.deleteDoc(firestore.doc(db, 'notices', noticeId));
+            },
+
+            async createNotice(noticeData) {
+                const { firestore, db } = getFirebase();
+                const docRef = await firestore.addDoc(firestore.collection(db, 'notices'), {
+                    ...noticeData,
+                    createdAt: firestore.serverTimestamp()
+                });
+                return docRef.id;
+            },
+
+            async getAllPosts() {
+                const { firestore, db } = getFirebase();
+                const q = firestore.query(firestore.collection(db, 'posts'), firestore.orderBy('createdAt', 'desc'));
+                const querySnapshot = await firestore.getDocs(q);
+                return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            },
+
+            async deletePost(postId) {
+                const { firestore, db } = getFirebase();
+                await firestore.deleteDoc(firestore.doc(db, 'posts', postId));
+            },
+
+            async getAllRecommendations() {
+                const { firestore, db } = getFirebase();
+                const q = firestore.query(firestore.collection(db, 'recommendations'), firestore.orderBy('createdAt', 'desc'));
+                const querySnapshot = await firestore.getDocs(q);
+                return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            },
+
+            async deleteRecommendation(id) {
+                const { firestore, db } = getFirebase();
+                await firestore.deleteDoc(firestore.doc(db, 'recommendations', id));
+            },
+
+            async getAllSharing() {
+                const { firestore, db } = getFirebase();
+                const q = firestore.query(firestore.collection(db, 'sharing'), firestore.orderBy('createdAt', 'desc'));
+                const querySnapshot = await firestore.getDocs(q);
+                return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            },
+
+            async deleteSharing(id) {
+                const { firestore, db } = getFirebase();
+                await firestore.deleteDoc(firestore.doc(db, 'sharing', id));
+            },
+
+            async getAllFeedback() {
+                const { firestore, db } = getFirebase();
+                const q = firestore.query(
+                    firestore.collection(db, 'feedback'),
+                    firestore.orderBy('createdAt', 'desc')
+                );
+                const querySnapshot = await firestore.getDocs(q);
+                return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            },
+
+            async updateFeedbackStatus(id, status) {
+                const { firestore, db } = getFirebase();
+                await firestore.updateDoc(firestore.doc(db, 'feedback', id), { status });
+            },
+
+            async deleteFeedback(id) {
+                const { firestore, db } = getFirebase();
+                await firestore.deleteDoc(firestore.doc(db, 'feedback', id));
+            },
+
+            async getAllReports() {
+                const { firestore, db } = getFirebase();
+                const q = firestore.query(
+                    firestore.collection(db, 'reports'),
+                    firestore.orderBy('createdAt', 'desc')
+                );
+                const querySnapshot = await firestore.getDocs(q);
+                return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            },
+
+            async updateReportStatus(id, status) {
+                const { firestore, db } = getFirebase();
+                await firestore.updateDoc(firestore.doc(db, 'reports', id), { status });
+            },
+
+            async deleteReport(id) {
+                const { firestore, db } = getFirebase();
+                await firestore.deleteDoc(firestore.doc(db, 'reports', id));
+            },
+
+            async getStatistics(users, chatRooms, events) {
+                return {
+                    totalUsers: users.length,
+                    totalChatRooms: chatRooms.length,
+                    totalEvents: events.length,
+                    activeEvents: events.filter(e => e.status === 'open').length,
+                    ageDistribution: {
+                        '20s': users.filter(u => u.age === '20s').length,
+                        '30s': users.filter(u => u.age === '30s').length,
+                        '40s': users.filter(u => u.age === '40s').length,
+                        '50s': users.filter(u => u.age === '50s').length,
+                    },
+                    genderDistribution: {
+                        male: users.filter(u => u.gender === 'male').length,
+                        female: users.filter(u => u.gender === 'female').length,
+                    },
+                    dongDistribution: {
+                        '6201': users.filter(u => u.dong === '6201').length,
+                        '6202': users.filter(u => u.dong === '6202').length,
+                        '6203': users.filter(u => u.dong === '6203').length,
+                        '6204': users.filter(u => u.dong === '6204').length,
+                    },
+                    topInterests: this.getTopInterests(users, 5),
+                    avgRoomMembers: chatRooms.length > 0
+                        ? (chatRooms.reduce((sum, room) => sum + (room.members?.length || 0), 0) / chatRooms.length).toFixed(1)
+                        : 0,
+                };
+            },
+
+            getTopInterests(users, limit = 5) {
+                const interestCount = {};
+                users.forEach(user => {
+                    user.interests?.forEach(interest => {
+                        interestCount[interest] = (interestCount[interest] || 0) + 1;
+                    });
+                });
+
+                return Object.entries(interestCount)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, limit)
+                    .map(([interest, count]) => ({ interest, count }));
+            }
+        };
+
+        // 메뉴 아이템 정의
+        const menuItems = [
+            { id: 'stats', name: '통계', icon: BarChart, color: 'bg-indigo-500' },
+            { id: 'users', name: '사용자', icon: Users, color: 'bg-blue-500' },
+            { id: 'rooms', name: '모임방', icon: MessageCircle, color: 'bg-cyan-500' },
+            { id: 'events', name: '이벤트', icon: Calendar, color: 'bg-purple-500' },
+            { id: 'notices', name: '공지사항', icon: Bell, color: 'bg-yellow-500' },
+            { id: 'posts', name: '모임후기', icon: FileText, color: 'bg-green-500' },
+            { id: 'recommendations', name: '맛집추천', icon: MapPin, color: 'bg-orange-500' },
+            { id: 'sharing', name: '나눔', icon: Gift, color: 'bg-pink-500' },
+            { id: 'feedback', name: '피드백', icon: AlertCircle, color: 'bg-violet-500' },
+            { id: 'reports', name: '신고', icon: Flag, color: 'bg-red-500' },
+        ];
+
+        // 메인 앱
+        const AdminApp = () => {
+            const [loading, setLoading] = useState(true);
+            const [user, setUser] = useState(null);
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [currentPage, setCurrentPage] = useState('login');
+
+            useEffect(() => {
+                const initAuth = () => {
+                    const { auth, firebaseAuth } = getFirebase();
+
+                    auth.onAuthStateChanged(firebaseAuth, (user) => {
+                        setUser(user);
+
+                        if (user && AdminUtils.isAdmin(user.email)) {
+                            setIsAdmin(true);
+                            setCurrentPage('dashboard');
+                            setLoading(false);
+                        } else {
+                            // 관리자가 아니거나 로그인 안됨 → 메인 페이지로 이동
+                            window.location.href = '/';
+                        }
+                    });
+                };
+
+                if (window.firebaseReady) {
+                    initAuth();
+                } else {
+                    window.addEventListener('firebaseReady', initAuth, { once: true });
+                }
+
+                return () => {
+                    window.removeEventListener('firebaseReady', initAuth);
+                };
+            }, []);
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="loading loading-dark"></div>
+                            <p className="mt-4 text-gray-600">로딩 중...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (currentPage === 'login') return <AdminLogin />;
+            if (currentPage === 'unauthorized') return <Unauthorized />;
+            if (currentPage === 'dashboard') return <AdminDashboard user={user} />;
+
+            return null;
+        };
+
+        // 관리자 로그인
+        const AdminLogin = () => {
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+
+            const handleLogin = async () => {
+                setError('');
+                setLoading(true);
+
+                try {
+                    if (!AdminUtils.isAdmin(email)) {
+                        throw new Error('관리자 권한이 없습니다.');
+                    }
+
+                    const { auth, firebaseAuth } = getFirebase();
+                    await auth.signInWithEmailAndPassword(firebaseAuth, email, password);
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 flex items-center justify-center p-4">
+                    <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
+                        <div className="text-center mb-8">
+                            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-600 rounded-full mb-4">
+                                <Shield size={32} className="text-white" />
+                            </div>
+                            <h1 className="text-2xl font-bold text-gray-800 mb-2">관리자 페이지</h1>
+                            <p className="text-gray-600 text-sm">우리 아파트 관리 시스템</p>
+                        </div>
+
+                        {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">관리자 이메일</label>
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-red-500 focus:outline-none"
+                                    placeholder="admin@admin.com"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">비밀번호</label>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-red-500 focus:outline-none"
+                                    placeholder="비밀번호"
+                                    onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                                />
+                            </div>
+
+                            <button
+                                onClick={handleLogin}
+                                disabled={loading}
+                                className="w-full bg-red-600 text-white py-3 rounded-lg font-medium hover:bg-red-700 flex items-center justify-center"
+                            >
+                                {loading ? <div className="loading"></div> : '로그인'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 권한 없음 페이지
+        const Unauthorized = () => {
+            const handleLogout = async () => {
+                const { auth, firebaseAuth } = getFirebase();
+                await auth.signOut(firebaseAuth);
+                window.location.href = '/';
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+                    <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+                        <div className="text-6xl mb-4">🚫</div>
+                        <h1 className="text-2xl font-bold text-gray-800 mb-2">접근 권한 없음</h1>
+                        <p className="text-gray-600 mb-6">관리자 권한이 필요합니다.</p>
+                        <button onClick={handleLogout} className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700">
+                            로그아웃
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // 관리자 대시보드
+        const AdminDashboard = ({ user }) => {
+            const [activeTab, setActiveTab] = useState('stats');
+            const [showMenu, setShowMenu] = useState(false);
+            const [users, setUsers] = useState([]);
+            const [chatRooms, setChatRooms] = useState([]);
+            const [events, setEvents] = useState([]);
+            const [notices, setNotices] = useState([]);
+            const [posts, setPosts] = useState([]);
+            const [recommendations, setRecommendations] = useState([]);
+            const [sharing, setSharing] = useState([]);
+            const [feedback, setFeedback] = useState([]);
+            const [reports, setReports] = useState([]);
+            const [stats, setStats] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                loadAllData();
+            }, []);
+
+            const loadAllData = async () => {
+                setLoading(true);
+                try {
+                    const usersData = await AdminUtils.getAllUsers().catch(e => { console.error('사용자 로드 실패:', e); return []; });
+                    const roomsData = await AdminUtils.getAllChatRooms().catch(e => { console.error('모임방 로드 실패:', e); return []; });
+                    const eventsData = await AdminUtils.getAllEvents().catch(e => { console.error('이벤트 로드 실패:', e); return []; });
+                    const noticesData = await AdminUtils.getAllNotices().catch(e => { console.error('공지사항 로드 실패:', e); return []; });
+                    const postsData = await AdminUtils.getAllPosts().catch(e => { console.error('게시글 로드 실패:', e); return []; });
+                    const recommendationsData = await AdminUtils.getAllRecommendations().catch(e => { console.error('추천 로드 실패:', e); return []; });
+                    const sharingData = await AdminUtils.getAllSharing().catch(e => { console.error('나눔 로드 실패:', e); return []; });
+                    const feedbackData = await AdminUtils.getAllFeedback().catch(e => { console.error('피드백 로드 실패:', e); return []; });
+                    const reportsData = await AdminUtils.getAllReports().catch(e => { console.error('신고 로드 실패:', e); return []; });
+
+                    setUsers(usersData);
+                    setChatRooms(roomsData);
+                    setEvents(eventsData);
+                    setNotices(noticesData);
+                    setPosts(postsData);
+                    setRecommendations(recommendationsData);
+                    setSharing(sharingData);
+                    setFeedback(feedbackData);
+                    setReports(reportsData);
+
+                    const statsData = await AdminUtils.getStatistics(usersData, roomsData, eventsData);
+                    setStats(statsData);
+                } catch (error) {
+                    console.error('데이터 로드 실패:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleLogout = async () => {
+                const { auth, firebaseAuth } = getFirebase();
+                await auth.signOut(firebaseAuth);
+                window.location.href = '/';
+            };
+
+            const counts = {
+                users: users.length,
+                rooms: chatRooms.length,
+                events: events.length,
+                notices: notices.length,
+                posts: posts.length,
+                recommendations: recommendations.length,
+                sharing: sharing.length,
+                feedback: feedback.length,
+                reports: reports.length,
+            };
+
+            const getActiveMenuItem = () => menuItems.find(item => item.id === activeTab);
+
+            return (
+                <div className="min-h-screen bg-gray-100">
+                    {/* 헤더 */}
+                    <header className="bg-white shadow-sm sticky top-0 z-40">
+                        <div className="px-4 py-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-3">
+                                    <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center">
+                                        <Shield size={20} className="text-white" />
+                                    </div>
+                                    <div>
+                                        <h1 className="text-lg font-bold text-gray-800">관리자</h1>
+                                        <p className="text-xs text-gray-500 hidden sm:block">{user?.email}</p>
+                                    </div>
+                                </div>
+                                <button onClick={handleLogout} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800 bg-gray-100 px-3 py-2 rounded-lg">
+                                    <LogOut size={18} />
+                                    <span className="hidden sm:inline">로그아웃</span>
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* 모바일 메뉴 선택기 */}
+                    <div className="lg:hidden bg-white border-b px-4 py-3">
+                        <button
+                            onClick={() => setShowMenu(!showMenu)}
+                            className="w-full flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3"
+                        >
+                            <div className="flex items-center gap-3">
+                                {React.createElement(getActiveMenuItem().icon, { size: 20, className: 'text-gray-700' })}
+                                <span className="font-medium">{getActiveMenuItem().name}</span>
+                                {counts[activeTab] !== undefined && (
+                                    <span className="bg-gray-200 text-gray-700 text-xs px-2 py-0.5 rounded-full">
+                                        {counts[activeTab]}
+                                    </span>
+                                )}
+                            </div>
+                            <ChevronDown size={20} className={`text-gray-500 transition-transform ${showMenu ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {/* 드롭다운 메뉴 */}
+                        {showMenu && (
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                                {menuItems.map(item => (
+                                    <button
+                                        key={item.id}
+                                        onClick={() => { setActiveTab(item.id); setShowMenu(false); }}
+                                        className={`flex items-center gap-2 p-3 rounded-lg text-left ${
+                                            activeTab === item.id
+                                                ? 'bg-indigo-50 border-2 border-indigo-500'
+                                                : 'bg-gray-50 border-2 border-transparent'
+                                        }`}
+                                    >
+                                        <div className={`w-8 h-8 ${item.color} rounded-lg flex items-center justify-center`}>
+                                            {React.createElement(item.icon, { size: 16, className: 'text-white' })}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm font-medium truncate">{item.name}</div>
+                                            {counts[item.id] !== undefined && (
+                                                <div className="text-xs text-gray-500">{counts[item.id]}개</div>
+                                            )}
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex">
+                        {/* 데스크탑 사이드바 */}
+                        <aside className="hidden lg:block w-64 bg-white border-r min-h-[calc(100vh-64px)] p-4 sticky top-16">
+                            <nav className="space-y-1">
+                                {menuItems.map(item => (
+                                    <button
+                                        key={item.id}
+                                        onClick={() => setActiveTab(item.id)}
+                                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                                            activeTab === item.id
+                                                ? 'bg-indigo-50 text-indigo-700'
+                                                : 'text-gray-700 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        <div className={`w-8 h-8 ${item.color} rounded-lg flex items-center justify-center`}>
+                                            {React.createElement(item.icon, { size: 16, className: 'text-white' })}
+                                        </div>
+                                        <span className="font-medium">{item.name}</span>
+                                        {counts[item.id] !== undefined && (
+                                            <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${
+                                                activeTab === item.id ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'
+                                            }`}>
+                                                {counts[item.id]}
+                                            </span>
+                                        )}
+                                    </button>
+                                ))}
+                            </nav>
+                        </aside>
+
+                        {/* 메인 콘텐츠 */}
+                        <main className="flex-1 p-4 lg:p-6">
+                            {loading ? (
+                                <div className="text-center py-12">
+                                    <div className="loading loading-dark"></div>
+                                    <p className="mt-4 text-gray-600">데이터 로딩 중...</p>
+                                </div>
+                            ) : (
+                                <>
+                                    {activeTab === 'stats' && <StatsTab stats={stats} />}
+                                    {activeTab === 'users' && <UsersTab users={users} onDelete={async (id) => { await AdminUtils.deleteUser(id); loadAllData(); }} />}
+                                    {activeTab === 'rooms' && <RoomsTab chatRooms={chatRooms} onDelete={async (id) => { await AdminUtils.deleteChatRoom(id); loadAllData(); }} />}
+                                    {activeTab === 'events' && <EventsTab events={events} onDelete={async (id) => { await AdminUtils.deleteEvent(id); loadAllData(); }} />}
+                                    {activeTab === 'notices' && <NoticesTab notices={notices} onDelete={async (id) => { await AdminUtils.deleteNotice(id); loadAllData(); }} onCreate={async (data) => { await AdminUtils.createNotice({ ...data, authorId: user.uid, authorNickname: '관리자' }); loadAllData(); }} />}
+                                    {activeTab === 'posts' && <PostsTab posts={posts} onDelete={async (id) => { await AdminUtils.deletePost(id); loadAllData(); }} />}
+                                    {activeTab === 'recommendations' && <RecommendationsTab recommendations={recommendations} onDelete={async (id) => { await AdminUtils.deleteRecommendation(id); loadAllData(); }} />}
+                                    {activeTab === 'sharing' && <SharingTab sharing={sharing} onDelete={async (id) => { await AdminUtils.deleteSharing(id); loadAllData(); }} />}
+                                    {activeTab === 'feedback' && <FeedbackTab feedback={feedback} onUpdateStatus={async (id, status) => { await AdminUtils.updateFeedbackStatus(id, status); loadAllData(); }} onDelete={async (id) => { await AdminUtils.deleteFeedback(id); loadAllData(); }} />}
+                                    {activeTab === 'reports' && <ReportsTab reports={reports} onUpdateStatus={async (id, status) => { await AdminUtils.updateReportStatus(id, status); loadAllData(); }} onDelete={async (id) => { await AdminUtils.deleteReport(id); loadAllData(); }} />}
+                                </>
+                            )}
+                        </main>
+                    </div>
+                </div>
+            );
+        };
+
+        // 통계 탭
+        const StatsTab = ({ stats }) => {
+            if (!stats) return null;
+
+            return (
+                <div className="space-y-4">
+                    {/* 주요 지표 */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="card p-4">
+                            <div className="text-xs text-gray-500 mb-1">전체 사용자</div>
+                            <div className="text-2xl font-bold text-indigo-600">{stats.totalUsers}</div>
+                        </div>
+                        <div className="card p-4">
+                            <div className="text-xs text-gray-500 mb-1">모임방</div>
+                            <div className="text-2xl font-bold text-blue-600">{stats.totalChatRooms}</div>
+                        </div>
+                        <div className="card p-4">
+                            <div className="text-xs text-gray-500 mb-1">전체 이벤트</div>
+                            <div className="text-2xl font-bold text-purple-600">{stats.totalEvents}</div>
+                        </div>
+                        <div className="card p-4">
+                            <div className="text-xs text-gray-500 mb-1">진행중 이벤트</div>
+                            <div className="text-2xl font-bold text-green-600">{stats.activeEvents}</div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {/* 연령대 분포 */}
+                        <div className="card p-4">
+                            <h3 className="font-bold mb-3">연령대 분포</h3>
+                            <div className="space-y-2">
+                                {Object.entries(stats.ageDistribution).map(([age, count]) => (
+                                    <div key={age} className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-600">{age === '20s' ? '20대' : age === '30s' ? '30대' : age === '40s' ? '40대' : '50대 이상'}</span>
+                                        <span className="font-semibold">{count}명</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* 성별 분포 */}
+                        <div className="card p-4">
+                            <h3 className="font-bold mb-3">성별 분포</h3>
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-gray-600">남성</span>
+                                    <span className="font-semibold">{stats.genderDistribution.male}명</span>
+                                </div>
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-gray-600">여성</span>
+                                    <span className="font-semibold">{stats.genderDistribution.female}명</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 동별 분포 */}
+                        <div className="card p-4">
+                            <h3 className="font-bold mb-3">동별 분포</h3>
+                            <div className="space-y-2">
+                                {Object.entries(stats.dongDistribution).map(([dong, count]) => (
+                                    <div key={dong} className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-600">{dong}동</span>
+                                        <span className="font-semibold">{count}명</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* 인기 관심사 */}
+                        <div className="card p-4">
+                            <h3 className="font-bold mb-3">인기 관심사 Top 5</h3>
+                            <div className="space-y-2">
+                                {stats.topInterests.map((item, index) => (
+                                    <div key={item.interest} className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-600">{index + 1}. {item.interest}</span>
+                                        <span className="font-semibold">{item.count}명</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 카드형 아이템 컴포넌트
+        const DataCard = ({ children, onDelete, className = "" }) => {
+            const [showConfirm, setShowConfirm] = useState(false);
+
+            const handleDelete = () => {
+                setShowConfirm(false);
+                onDelete();
+            };
+
+            return (
+                <div className={`card p-4 ${className}`}>
+                    <div className="flex justify-between items-start">
+                        <div className="flex-1 min-w-0">{children}</div>
+                        {onDelete && (
+                            <button
+                                onClick={() => setShowConfirm(true)}
+                                className="ml-2 p-2 text-red-500 hover:bg-red-50 rounded-lg flex-shrink-0"
+                            >
+                                <Trash2 size={18} />
+                            </button>
+                        )}
+                    </div>
+                    <ConfirmModal
+                        isOpen={showConfirm}
+                        title="삭제 확인"
+                        message="정말 삭제하시겠습니까?"
+                        onConfirm={handleDelete}
+                        onCancel={() => setShowConfirm(false)}
+                        confirmText="삭제"
+                        danger={true}
+                    />
+                </div>
+            );
+        };
+
+        // 상태 뱃지
+        const StatusBadge = ({ status, type = 'default' }) => {
+            const colors = {
+                open: 'bg-green-100 text-green-700',
+                closed: 'bg-gray-100 text-gray-600',
+                completed: 'bg-gray-100 text-gray-600',
+                pending: 'bg-yellow-100 text-yellow-700',
+                reviewed: 'bg-blue-100 text-blue-700',
+                resolved: 'bg-green-100 text-green-700',
+                dismissed: 'bg-gray-100 text-gray-600',
+                urgent: 'bg-red-100 text-red-700',
+                normal: 'bg-blue-100 text-blue-700',
+            };
+            return (
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] || colors.default}`}>
+                    {status}
+                </span>
+            );
+        };
+
+        // 사용자 탭
+        const UsersTab = ({ users, onDelete }) => (
+            <div className="space-y-3">
+                <div className="text-sm text-gray-500 mb-2">총 {users.length}명</div>
+                {users.map(user => (
+                    <DataCard key={user.id} onDelete={() => onDelete(user.id)}>
+                        <div className="font-medium text-gray-900">{user.nickname}</div>
+                        <div className="text-sm text-gray-500 mt-1">
+                            {user.dong}동 · {user.age === '20s' ? '20대' : user.age === '30s' ? '30대' : user.age === '40s' ? '40대' : '50대+'} · {user.gender === 'male' ? '남' : '여'}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">@{user.kakaoId} · 관심사 {user.interests?.length || 0}개</div>
+                    </DataCard>
+                ))}
+                {users.length === 0 && <div className="text-center py-8 text-gray-500">등록된 사용자가 없습니다.</div>}
+            </div>
+        );
+
+        // 모임방 탭
+        const RoomsTab = ({ chatRooms, onDelete }) => (
+            <div className="space-y-3">
+                <div className="text-sm text-gray-500 mb-2">총 {chatRooms.length}개</div>
+                {chatRooms.map(room => (
+                    <DataCard key={room.id} onDelete={() => onDelete(room.id)}>
+                        <div className="font-medium text-gray-900">{room.name}</div>
+                        <div className="text-sm text-gray-500 mt-1">
+                            {room.interestId} · {room.members?.length || 0}명 참여
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                            {room.dong === 'all' ? '전체' : room.dong + '동'} · {room.creatorNickname}
+                        </div>
+                    </DataCard>
+                ))}
+                {chatRooms.length === 0 && <div className="text-center py-8 text-gray-500">생성된 모임방이 없습니다.</div>}
+            </div>
+        );
+
+        // 이벤트 탭
+        const EventsTab = ({ events, onDelete }) => (
+            <div className="space-y-3">
+                <div className="text-sm text-gray-500 mb-2">총 {events.length}개</div>
+                {events.map(event => (
+                    <DataCard key={event.id} onDelete={() => onDelete(event.id)}>
+                        <div className="flex items-center gap-2">
+                            <div className="font-medium text-gray-900 flex-1">{event.title}</div>
+                            <StatusBadge status={event.status === 'open' ? '진행중' : '마감'} />
+                        </div>
+                        <div className="text-sm text-gray-500 mt-1">
+                            {event.interestId} · {event.participants?.length || 0}/{event.maxParticipants || '∞'}명
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                            {event.eventDate ? new Date(event.eventDate).toLocaleDateString('ko-KR') : '날짜 미정'}
+                        </div>
+                    </DataCard>
+                ))}
+                {events.length === 0 && <div className="text-center py-8 text-gray-500">등록된 이벤트가 없습니다.</div>}
+            </div>
+        );
+
+        // 공지사항 탭
+        const NoticesTab = ({ notices, onDelete, onCreate }) => {
+            const [showForm, setShowForm] = useState(false);
+            const [formData, setFormData] = useState({ title: '', content: '', type: 'normal' });
+            const [submitting, setSubmitting] = useState(false);
+
+            const handleSubmit = async () => {
+                if (!formData.title.trim() || !formData.content.trim()) {
+                    alert('제목과 내용을 입력해주세요.');
+                    return;
+                }
+                setSubmitting(true);
+                try {
+                    await onCreate(formData);
+                    setFormData({ title: '', content: '', type: 'normal' });
+                    setShowForm(false);
+                } catch (error) {
+                    console.error('공지사항 작성 실패:', error);
+                    alert('공지사항 작성에 실패했습니다.');
+                } finally {
+                    setSubmitting(false);
+                }
+            };
+
+            return (
+                <div className="space-y-3">
+                    {/* 작성 버튼 */}
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="text-sm text-gray-500">총 {notices.length}개</div>
+                        <button
+                            onClick={() => setShowForm(!showForm)}
+                            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm font-medium"
+                        >
+                            {showForm ? '취소' : '+ 공지 작성'}
+                        </button>
+                    </div>
+
+                    {/* 작성 폼 */}
+                    {showForm && (
+                        <div className="card p-4 mb-4 border-2 border-indigo-200">
+                            <h3 className="font-bold text-gray-900 mb-4">새 공지사항 작성</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">유형</label>
+                                    <select
+                                        value={formData.type}
+                                        onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                    >
+                                        <option value="normal">일반</option>
+                                        <option value="urgent">긴급</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">제목</label>
+                                    <input
+                                        type="text"
+                                        value={formData.title}
+                                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                        placeholder="공지사항 제목을 입력하세요"
+                                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">내용</label>
+                                    <textarea
+                                        value={formData.content}
+                                        onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                                        placeholder="공지사항 내용을 입력하세요"
+                                        rows={5}
+                                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleSubmit}
+                                    disabled={submitting}
+                                    className="w-full bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 disabled:bg-gray-400 flex items-center justify-center"
+                                >
+                                    {submitting ? <div className="loading"></div> : '공지사항 등록'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 공지사항 목록 */}
+                    {notices.map(notice => (
+                        <DataCard key={notice.id} onDelete={() => onDelete(notice.id)}>
+                            <div className="flex items-center gap-2">
+                                <StatusBadge status={notice.type === 'urgent' ? '긴급' : '일반'} />
+                                <div className="font-medium text-gray-900 flex-1 truncate">{notice.title}</div>
+                            </div>
+                            <div className="text-sm text-gray-500 mt-1 line-clamp-2">{notice.content}</div>
+                            <div className="text-xs text-gray-400 mt-1">
+                                {notice.authorNickname || '관리자'} · {notice.createdAt ? new Date(notice.createdAt.seconds * 1000).toLocaleDateString('ko-KR') : '-'}
+                            </div>
+                        </DataCard>
+                    ))}
+                    {notices.length === 0 && !showForm && <div className="text-center py-8 text-gray-500">등록된 공지사항이 없습니다.</div>}
+                </div>
+            );
+        };
+
+        // 게시글 탭
+        const PostsTab = ({ posts, onDelete }) => (
+            <div className="space-y-3">
+                <div className="text-sm text-gray-500 mb-2">총 {posts.length}개</div>
+                {posts.map(post => (
+                    <DataCard key={post.id} onDelete={() => onDelete(post.id)}>
+                        <div className="font-medium text-gray-900 truncate">{post.title}</div>
+                        <div className="text-sm text-gray-500 mt-1 line-clamp-2">{post.content}</div>
+                        <div className="flex items-center gap-3 text-xs text-gray-400 mt-2">
+                            <span>{post.authorNickname}</span>
+                            <span>{post.interestId}</span>
+                            <span>좋아요 {post.likes?.length || 0}</span>
+                            <span>댓글 {post.commentCount || 0}</span>
+                        </div>
+                    </DataCard>
+                ))}
+                {posts.length === 0 && <div className="text-center py-8 text-gray-500">등록된 게시글이 없습니다.</div>}
+            </div>
+        );
+
+        // 맛집추천 탭
+        const categoryNames = {
+            'restaurant': '맛집',
+            'cafe': '카페',
+            'hospital': '병원',
+            'salon': '미용실',
+            'etc': '기타'
+        };
+
+        const RecommendationsTab = ({ recommendations, onDelete }) => (
+            <div className="space-y-3">
+                <div className="text-sm text-gray-500 mb-2">총 {recommendations.length}개</div>
+                {recommendations.map(item => (
+                    <DataCard key={item.id} onDelete={() => onDelete(item.id)}>
+                        <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+                                {categoryNames[item.category] || item.category}
+                            </span>
+                            <div className="font-medium text-gray-900 flex-1 truncate">{item.storeName}</div>
+                        </div>
+                        <div className="text-sm text-gray-600 mt-1 truncate">{item.title}</div>
+                        <div className="text-xs text-gray-400 mt-1">{item.location || '위치 미등록'}</div>
+                        <div className="flex items-center gap-3 text-xs text-gray-400 mt-2">
+                            <span>{item.authorNickname}</span>
+                            <span>좋아요 {item.likes?.length || 0}</span>
+                            <span>댓글 {item.commentCount || 0}</span>
+                        </div>
+                    </DataCard>
+                ))}
+                {recommendations.length === 0 && <div className="text-center py-8 text-gray-500">등록된 추천글이 없습니다.</div>}
+            </div>
+        );
+
+        // 나눔 탭
+        const sharingCategories = {
+            'free': '무료나눔',
+            'exchange': '교환',
+            'wanted': '필요해요'
+        };
+
+        const SharingTab = ({ sharing, onDelete }) => (
+            <div className="space-y-3">
+                <div className="text-sm text-gray-500 mb-2">총 {sharing.length}개</div>
+                {sharing.map(item => (
+                    <DataCard key={item.id} onDelete={() => onDelete(item.id)} className={item.status === 'completed' ? 'opacity-50' : ''}>
+                        <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                {sharingCategories[item.category] || item.category}
+                            </span>
+                            <StatusBadge status={item.status === 'completed' ? '완료' : '진행중'} />
+                        </div>
+                        <div className="font-medium text-gray-900 mt-2 truncate">{item.title}</div>
+                        <div className="text-sm text-gray-500 mt-1 line-clamp-2">{item.content}</div>
+                        <div className="flex items-center gap-3 text-xs text-gray-400 mt-2">
+                            <span>{item.authorNickname}</span>
+                            <span>좋아요 {item.likes?.length || 0}</span>
+                            <span>댓글 {item.commentCount || 0}</span>
+                        </div>
+                    </DataCard>
+                ))}
+                {sharing.length === 0 && <div className="text-center py-8 text-gray-500">등록된 나눔글이 없습니다.</div>}
+            </div>
+        );
+
+        // 피드백 탭
+        const feedbackCategories = {
+            suggestion: '기능 제안',
+            bug: '오류 신고',
+            question: '문의',
+            other: '기타'
+        };
+
+        const FeedbackTab = ({ feedback, onUpdateStatus, onDelete }) => (
+            <div className="space-y-3">
+                <div className="text-sm text-gray-500 mb-2">총 {feedback.length}개</div>
+                {feedback.map(item => (
+                    <DataCard key={item.id} onDelete={() => onDelete(item.id)} className={item.status === 'resolved' ? 'opacity-50' : ''}>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                                {feedbackCategories[item.category] || item.category}
+                            </span>
+                            <select
+                                value={item.status}
+                                onChange={(e) => onUpdateStatus(item.id, e.target.value)}
+                                className="px-2 py-0.5 rounded-full text-xs font-medium border-0 cursor-pointer bg-yellow-100 text-yellow-700"
+                            >
+                                <option value="pending">대기중</option>
+                                <option value="reviewed">검토중</option>
+                                <option value="resolved">완료</option>
+                            </select>
+                        </div>
+                        <div className="font-medium text-gray-900 mt-2">{item.title}</div>
+                        <div className="text-sm text-gray-500 mt-1">{item.content}</div>
+                        <div className="text-xs text-gray-400 mt-2">
+                            {item.userNickname} · {item.userEmail}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                            {item.createdAt ? new Date(item.createdAt.seconds * 1000).toLocaleDateString('ko-KR') : '-'}
+                        </div>
+                    </DataCard>
+                ))}
+                {feedback.length === 0 && <div className="text-center py-8 text-gray-500">받은 피드백이 없습니다.</div>}
+            </div>
+        );
+
+        // 신고 탭
+        const reportTypes = {
+            user: '사용자',
+            post: '게시글',
+            comment: '댓글',
+            chatRoom: '모임방',
+            other: '기타'
+        };
+
+        const reportReasons = {
+            spam: '스팸/광고',
+            abuse: '욕설/비하',
+            inappropriate: '부적절',
+            fraud: '사기',
+            harassment: '괴롭힘',
+            other: '기타'
+        };
+
+        const ReportsTab = ({ reports, onUpdateStatus, onDelete }) => (
+            <div className="space-y-3">
+                <div className="text-sm text-gray-500 mb-2">총 {reports.length}개</div>
+                {reports.map(report => (
+                    <DataCard
+                        key={report.id}
+                        onDelete={() => onDelete(report.id)}
+                        className={report.status === 'resolved' || report.status === 'dismissed' ? 'opacity-50' : ''}
+                    >
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                                {reportTypes[report.type] || report.type}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+                                {reportReasons[report.reason] || report.reason}
+                            </span>
+                            <select
+                                value={report.status}
+                                onChange={(e) => onUpdateStatus(report.id, e.target.value)}
+                                className="px-2 py-0.5 rounded-full text-xs font-medium border-0 cursor-pointer bg-yellow-100 text-yellow-700"
+                            >
+                                <option value="pending">대기중</option>
+                                <option value="reviewed">검토중</option>
+                                <option value="resolved">처리완료</option>
+                                <option value="dismissed">기각</option>
+                            </select>
+                        </div>
+                        <div className="mt-2">
+                            <div className="text-sm font-medium text-gray-900">
+                                신고 대상: {report.targetUserNickname || report.targetId}
+                            </div>
+                            {report.contentTitle && (
+                                <div className="text-xs text-gray-500 truncate">{report.contentTitle}</div>
+                            )}
+                        </div>
+                        {report.description && (
+                            <div className="text-sm text-gray-500 mt-2">{report.description}</div>
+                        )}
+                        <div className="text-xs text-gray-400 mt-2">
+                            신고자: {report.reporterNickname} · {report.createdAt ? new Date(report.createdAt.seconds * 1000).toLocaleDateString('ko-KR') : '-'}
+                        </div>
+                    </DataCard>
+                ))}
+                {reports.length === 0 && <div className="text-center py-8 text-gray-500">접수된 신고가 없습니다.</div>}
+            </div>
+        );
+
+        // 앱 렌더링
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<AdminApp />);
+    </script>
+</body>
+</html>

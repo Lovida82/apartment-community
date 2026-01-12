@@ -1,0 +1,206 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 관리자 이메일 체크 함수
+    function isAdmin() {
+      return request.auth != null &&
+             request.auth.token.email in ['admin@admin.com', 'admin@woori-apt.com', 'manager@woori-apt.com'];
+    }
+
+    // 본인 확인 함수
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // 문서 작성자 확인 함수
+    function isAuthor() {
+      return request.auth != null && request.auth.uid == resource.data.authorId;
+    }
+
+    // 인증된 사용자 확인
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // 사용자 프로필
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isOwner(resource.data.userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 채팅방
+    match /chatRooms/{roomId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() &&
+                      (request.auth.uid == resource.data.creatorId ||
+                       request.auth.uid in resource.data.members);
+      allow delete: if request.auth.uid == resource.data.creatorId || isAdmin();
+
+      // 채팅 메시지
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update: if request.auth.uid == resource.data.senderId;
+        allow delete: if request.auth.uid == resource.data.senderId || isAdmin();
+      }
+    }
+
+    // 이벤트
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() &&
+                      (request.auth.uid == resource.data.creatorId ||
+                       // 참가/취소 시 participants 배열만 수정 가능
+                       (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants'])));
+      allow delete: if request.auth.uid == resource.data.creatorId || isAdmin();
+    }
+
+    // 공지사항 - 관리자만 작성/수정/삭제 가능
+    match /notices/{noticeId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 모임 후기 게시글
+    match /posts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() &&
+                      (request.auth.uid == resource.data.authorId ||
+                       // 좋아요 시 likes 배열만 수정 가능
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount']));
+      allow delete: if request.auth.uid == resource.data.authorId || isAdmin();
+
+      // 댓글
+      match /comments/{commentId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update: if request.auth.uid == resource.data.authorId;
+        allow delete: if request.auth.uid == resource.data.authorId || isAdmin();
+      }
+    }
+
+    // 맛집/업체 추천
+    match /recommendations/{recId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() &&
+                      (request.auth.uid == resource.data.authorId ||
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount']));
+      allow delete: if request.auth.uid == resource.data.authorId || isAdmin();
+
+      match /comments/{commentId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update: if request.auth.uid == resource.data.authorId;
+        allow delete: if request.auth.uid == resource.data.authorId || isAdmin();
+      }
+    }
+
+    // 나눔 게시글
+    match /sharing/{sharingId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() &&
+                      (request.auth.uid == resource.data.authorId ||
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount']));
+      allow delete: if request.auth.uid == resource.data.authorId || isAdmin();
+
+      match /comments/{commentId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update: if request.auth.uid == resource.data.authorId;
+        allow delete: if request.auth.uid == resource.data.authorId || isAdmin();
+      }
+    }
+
+    // 중고거래 게시글
+    match /trading/{tradingId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() &&
+                      (request.auth.uid == resource.data.authorId ||
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount']));
+      allow delete: if request.auth.uid == resource.data.authorId || isAdmin();
+
+      match /comments/{commentId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update: if request.auth.uid == resource.data.authorId;
+        allow delete: if request.auth.uid == resource.data.authorId || isAdmin();
+      }
+    }
+
+    // 매칭 요청
+    match /matchRequests/{matchId} {
+      allow read: if isAuthenticated() &&
+                    (request.auth.uid == resource.data.fromUserId ||
+                     request.auth.uid == resource.data.toUserId);
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() &&
+                      (request.auth.uid == resource.data.fromUserId ||
+                       request.auth.uid == resource.data.toUserId);
+      allow delete: if isAuthenticated() &&
+                      (request.auth.uid == resource.data.fromUserId ||
+                       request.auth.uid == resource.data.toUserId) || isAdmin();
+    }
+
+    // 쪽지
+    match /directMessages/{threadId} {
+      allow read: if isAuthenticated() &&
+                    request.auth.uid in resource.data.participants;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() &&
+                      request.auth.uid in resource.data.participants;
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update: if request.auth.uid == resource.data.senderId;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // 알림
+    match /notifications/{notifId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow delete: if isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
+    // 즐겨찾기
+    match /bookmarks/{bookmarkId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow delete: if isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
+    // 피드백/요청사항
+    match /feedback/{feedbackId} {
+      allow read: if isAuthenticated() &&
+                    (request.auth.uid == resource.data.userId || isAdmin());
+      allow create: if isAuthenticated();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 신고
+    match /reports/{reportId} {
+      allow read: if isAuthenticated() &&
+                    (request.auth.uid == resource.data.reporterId || isAdmin());
+      allow create: if isAuthenticated();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+  }
+}
