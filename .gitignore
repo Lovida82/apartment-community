@@ -23,3 +23,6 @@ Thumbs.db
 # Claude temporary files
 tmpclaude-*
 .claude/
+
+# Local Netlify folder
+.netlify
