@@ -11,11 +11,14 @@
 Apartment_firebase_251121/
 ├── index.html          # 메인 앱 (사용자용)
 ├── admin_page.html     # 관리자 페이지
-├── dist/               # 배포용 폴더
+├── CLAUDE.md           # 프로젝트 문서 (이 파일)
+├── .gitignore          # Git 제외 파일 목록
+├── dist/               # 배포용 폴더 (Netlify 배포 대상)
 │   ├── index.html
 │   ├── admin_page.html
+│   ├── CLAUDE.md
 │   └── README.md
-└── claude.md           # 프로젝트 문서 (이 파일)
+└── .netlify/           # Netlify 로컬 설정 (Git 제외)
 ```
 
 ## Firebase 설정
@@ -164,6 +167,13 @@ calculateBadges(userProfile, stats)
 
 ## 주요 변경 이력
 
+### 2026-01-13
+- **GitHub 리포지토리 생성** (Lovida82/apartment-community)
+- **Netlify-GitHub 자동 배포 연동 완료**
+  - master 브랜치 푸시 시 자동 배포
+  - Base directory: (비움), Publish directory: `dist`
+- 자동 배포 테스트 완료
+
 ### 2026-01-12
 - 인기글 섹션 + 날씨 위젯 추가
 - 통합 검색 페이지 추가
@@ -174,8 +184,6 @@ calculateBadges(userProfile, stats)
 - 나눔→중고거래 확장 (TradingPage)
 - 관리자 페이지 신고 관리 탭 추가
 - Firebase 초기화 이벤트 방식 개선 (firebaseReady 이벤트)
-- **GitHub 리포지토리 연결** (Lovida82/apartment-community)
-- **Netlify-GitHub 자동 배포 설정 완료** (master 브랜치 푸시 시 자동 배포)
 
 ## 배포 방법 (GitHub 자동 배포)
 1. 코드 수정 후 dist 폴더에 복사:
