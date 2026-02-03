@@ -22,16 +22,10 @@ Apartment_firebase_251121/
 ```
 
 ## Firebase 설정
-```javascript
-const firebaseConfig = {
-    apiKey: "AIzaSyDz84lvk87Uu6uZJM0jBXA47-HHCtQ0dO8",
-    authDomain: "woori-apartment.firebaseapp.com",
-    projectId: "woori-apartment",
-    storageBucket: "woori-apartment.firebasestorage.app",
-    messagingSenderId: "783406954743",
-    appId: "1:783406954743:web:42c296d03ef9c1c1883bf2"
-};
-```
+- **프로젝트 ID**: woori-apartment
+- **인증 도메인**: woori-apartment.firebaseapp.com
+- **설정 파일**: `index.html`, `admin_page.html` 내 firebaseConfig 참조
+- **Console**: https://console.firebase.google.com/project/woori-apartment
 
 ## 구현된 기능
 
